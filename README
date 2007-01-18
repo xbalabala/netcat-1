@@ -1,16 +1,16 @@
-Netcat 1.10
-===========							   /\_/\
-								  / 0 0 \
-Netcat is a simple Unix utility which reads and writes data	 ====v====
-across network connections, using TCP or UDP protocol.		  \  W  /
-It is designed to be a reliable "back-end" tool that can	  |     |     _
-be used directly or easily driven by other programs and		  / ___ \    /
-scripts.  At the same time, it is a feature-rich network	 / /   \ \  |
-debugging and exploration tool, since it can create almost	(((-----)))-'
-any kind of connection you would need and has several		 /
-interesting built-in capabilities.  Netcat, or "nc" as the	(      ___
-actual program is named, should have been supplied long ago	 \__.=|___E
-as another one of those cryptic but standard Unix tools.	        /
+Netcat 1.10 (community-edition)
+===============================                                    /\_/\
+                                                                  / 0 0 \
+Netcat is a simple Unix utility which reads and writes data      ====v====
+across network connections, using TCP or UDP protocol.            \  W  /
+It is designed to be a reliable "back-end" tool that can          |     |     _
+be used directly or easily driven by other programs and           / ___ \    /
+scripts.  At the same time, it is a feature-rich network         / /   \ \  |
+debugging and exploration tool, since it can create almost      (((-----)))-'
+any kind of connection you would need and has several            /
+interesting built-in capabilities.  Netcat, or "nc" as the      (      ___
+actual program is named, should have been supplied long ago      \__.=|___E
+as another one of those cryptic but standard Unix tools.                /
 
 In the simplest usage, "nc host port" creates a TCP connection to the given
 port on the given target host.  Your standard input is then sent to the host,
@@ -79,7 +79,16 @@ No GPLs, Berkeley copyrights or any of that nonsense.  The author assumes NO
 responsibility for how anyone uses it.  If netcat makes you rich somehow and
 you're feeling generous, mail me a check.  If you are affiliated in any way
 with Microsoft Network, get a life.  Always ski in control.  Comments,
-questions, and patches to hobbit@avian.org.
+questions, and patches to nc110-devel@lists.sourceforge.net.
+
+Community Editions
+==================
+
+These updates are targetted at just fixing bugs and updating code to build on
+modern platforms.  In other words, we're here to just keep the code from
+bitrotting completely, not rewrite everything :).
+
+Our homepage is: http://nc110.sourceforge.net/
 
 Building
 ========
