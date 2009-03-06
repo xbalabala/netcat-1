@@ -46,7 +46,7 @@
 #ifdef HAVE_TIME_H
 #include <time.h>
 #endif
-#ifdef LINUX
+#ifdef __linux__
 #include <resolv.h>
 #endif
 

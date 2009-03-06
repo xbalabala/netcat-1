@@ -279,7 +279,7 @@ There's a BIG swamp lurking where network code of any sort lives.
 
 /* linux, which is trying as desperately as the gnu folks can to be
    POSIXLY_CORRECT.  I think I'm gonna hurl... */
-#ifdef LINUX
+#ifdef __linux__
 #undef UTMPX
 #undef HAVE_SYSINFO
 #undef HAVE_SELECT_H
