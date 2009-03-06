@@ -102,6 +102,14 @@
 #define socklen_t int
 #endif
 
+#ifdef HAVE_SIGSETJMP
+#define jmp_buf sigjmp_buf
+#undef setjmp
+#define setjmp(buf) sigsetjmp(buf,1)
+#undef longjmp
+#define longjmp siglongjmp
+#endif
+
 struct host_poop {
   char name[MAXHOSTNAMELEN];	/* dns name */
   char addrs[8][24];		/* ascii-format IP addresses */
