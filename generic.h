@@ -284,6 +284,7 @@ There's a BIG swamp lurking where network code of any sort lives.
 #undef HAVE_SYSINFO
 #undef HAVE_SELECT_H
 #undef HAVE_TTYENT_H
+#define HAVE_SOCKLEN_T
 #endif /* linux */
 
 /* irix 5.x; may not be correct for earlier ones */
