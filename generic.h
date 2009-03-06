@@ -101,6 +101,9 @@
 /* some SV-flavors break select stuff out separately */
 #define HAVE_SELECT_H
 
+/* some put time() in here rather than sys/time.h */
+#define HAVE_TIME_H
+
 /* assorted others */
 #define HAVE_PARAM_H		/* in sys/ */
 #define HAVE_SYSMACROS_H	/* in sys/ */
