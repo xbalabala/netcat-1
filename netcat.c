@@ -222,7 +222,6 @@ void bail (str, p1, p2, p3, p4, p5, p6)
   o_verbose = 1;
   holler (str, p1, p2, p3, p4, p5, p6);
   close (netfd);
-  sleep (1);
   exit (1);
 } /* bail */
 
