@@ -585,6 +585,27 @@ void loadports (block, lo, hi)
 
 #ifdef GAPING_SECURITY_HOLE
 char * pr00gie = NULL;			/* global ptr to -e arg */
+int doexec_use_sh = 0;			/* `-c' or `-e' option? */
+
+/* doexec_new :
+   fiddle all the file descriptors around, and hand off to another prog.  Sort
+   of like a one-off "poor man's inetd".  This is the only section of code
+   that would be security-critical, which is why it's ifdefed out by default.
+   Use at your own hairy risk; if you leave shells lying around behind open
+   listening ports you deserve to lose!! */
+doexec_new (fd)
+  int fd;
+{
+  dup2 (fd, 0);				/* the precise order of fiddlage */
+  close (fd);				/* is apparently crucial; this is */
+  dup2 (0, 1);				/* swiped directly out of "inetd". */
+  dup2 (0, 2);
+
+  /* A POSIX-conformant system must have `/bin/sh'. */
+Debug (("gonna exec \"%s\" using /bin/sh...", pr00gie))
+  execl ("/bin/sh", "sh", "-c", pr00gie, NULL);
+  bail ("exec %s failed", pr00gie);	/* this gets sent out.  Hmm... */
+} /* doexec_new */
 
 /* doexec :
    fiddle all the file descriptors around, and hand off to another prog.  Sort
@@ -1332,7 +1353,9 @@ options:");
    newlines as they bloody please.  u-fix... */
 #ifdef GAPING_SECURITY_HOLE	/* needs to be separate holler() */
   holler ("\
-	-e prog			program to exec after connect [dangerous!!]");
+	-c shell commands	as `-e'; use /bin/sh to exec [dangerous!!]");
+  holler ("\
+	-e filename		program to exec after connect [dangerous!!]");
 #endif
   holler ("\
 	-g gateway		source-routing hop point[s], up to 8\n\
@@ -1459,15 +1482,20 @@ main (argc, argv)
 
 /* If your shitbox doesn't have getopt, step into the nineties already. */
 /* optarg, optind = next-argv-component [i.e. flag arg]; optopt = last-char */
-  while ((x = getopt (argc, argv, "ae:g:G:hi:lno:p:rs:tuvw:z")) != EOF) {
+  while ((x = getopt (argc, argv, "ac:e:g:G:hi:lno:p:rs:tuvw:z")) != EOF) {
 /* Debug (("in go: x now %c, optarg %x optind %d", x, optarg, optind)) */
     switch (x) {
       case 'a':
 	bail ("all-A-records NIY");
 	o_alla++; break;
 #ifdef GAPING_SECURITY_HOLE
-      case 'e':				/* prog to exec */
+      case 'c':				/* shell commands to exec */
 	pr00gie = optarg;
+	doexec_use_sh = 1;
+	break;
+      case 'e':				/* filename to exec */
+	pr00gie = optarg;
+	doexec_use_sh = 0;
 	break;
 #endif
       case 'G':				/* srcrt gateways pointer val */
@@ -1596,8 +1624,11 @@ Debug (("after go: x now %c, optarg %x optind %d", x, optarg, optind))
 /* dolisten does its own connect reporting, so we don't holler anything here */
     if (netfd > 0) {
 #ifdef GAPING_SECURITY_HOLE
-      if (pr00gie)			/* -e given? */
-	doexec (netfd);
+      if (pr00gie)			/* -c or -e given? */
+	if (doexec_use_sh)		/* -c */
+	  doexec_new (netfd);
+        else				/* -e */
+	  doexec (netfd);
 #endif /* GAPING_SECURITY_HOLE */
       x = readwrite (netfd);		/* it even works with UDP! */
       if (o_verbose > 1)		/* normally we don't care */
