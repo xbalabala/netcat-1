@@ -464,8 +464,12 @@ USHORT getportpoop (pstring, pnum)
     if (pstring)			/* one or the other, pleeze */
       return (0);
     x = pnum;
+#if 0
+    /* the -n flag is to disable dns lookup only, and getservby*
+       functions are not a speed issue at all, so ... */
     if (o_nflag)			/* go faster, skip getservbyblah */
       goto gp_finish;
+#endif
     y = htons (x);			/* gotta do this -- see Fig.1 below */
     servent = getservbyport (y, whichp);
     if (servent) {
