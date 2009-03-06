@@ -31,7 +31,7 @@
 /* conditional includes -- a very messy section which you may have to dink
    for your own architecture [and please send diffs...]: */
 /* #undef _POSIX_SOURCE */	/* might need this for something? */
-/* #define HAVE_BIND */		/* ASSUMPTION -- seems to work everywhere! */
+#define HAVE_BIND		/* ASSUMPTION -- seems to work everywhere! */
 #define HAVE_HELP		/* undefine if you dont want the help text */
 /* #define ANAL */		/* if you want case-sensitive DNS matching */
 
@@ -45,6 +45,9 @@
 #endif
 #ifdef HAVE_TIME_H
 #include <time.h>
+#endif
+#ifdef LINUX
+#include <resolv.h>
 #endif
 
 /* have to do this *before* including types.h. xxx: Linux still has it wrong */
