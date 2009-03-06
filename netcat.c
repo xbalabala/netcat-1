@@ -76,6 +76,7 @@
 #include <errno.h>
 #include <signal.h>
 #include <fcntl.h>		/* O_WRONLY et al */
+#include <unistd.h>
 
 /* handy stuff: */
 #define SA struct sockaddr	/* socket overgeneralization braindeath */
