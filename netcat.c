@@ -169,6 +169,7 @@ USHORT o_wfile = 0;
 USHORT o_random = 0;
 USHORT o_udpmode = 0;
 USHORT o_verbose = 0;
+USHORT o_holler_stderr = 1;
 unsigned int o_wait = 0;
 USHORT o_zero = 0;
 /* o_tn in optional section */
@@ -194,22 +195,23 @@ void holler (str, p1, p2, p3, p4, p5, p6)
   char * str;
   char * p1, * p2, * p3, * p4, * p5, * p6;
 {
+  FILE *o_holler_out = (o_holler_stderr ? stderr : stdout);
   if (o_verbose) {
-    fprintf (stderr, str, p1, p2, p3, p4, p5, p6);
+    fprintf (o_holler_out, str, p1, p2, p3, p4, p5, p6);
 #ifdef HAVE_BIND
     if (h_errno) {		/* if host-lookup variety of error ... */
       if (h_errno > 4)		/* oh no you don't, either */
-	fprintf (stderr, "preposterous h_errno: %d", h_errno);
+	fprintf (o_holler_out, "preposterous h_errno: %d", h_errno);
       else
-	fprintf (stderr, h_errs[h_errno]);	/* handle it here */
+	fprintf (o_holler_out, h_errs[h_errno]);	/* handle it here */
       h_errno = 0;				/* and reset for next call */
     }
 #endif
     if (errno) {		/* this gives funny-looking messages, but */
       perror (" ");		/* it's more portable than sys_errlist[]... */
     } else			/* xxx: do something better?  */
-      fprintf (stderr, "\n");
-    fflush (stderr);
+      fprintf (o_holler_out, "\n");
+    fflush (o_holler_out);
   }
 } /* holler */
 
@@ -1308,6 +1310,7 @@ void
 helpme()
 {
   o_verbose = 1;
+  o_holler_stderr = 0;
   holler ("[v1.10]\n\
 connect to somewhere:	nc [-options] hostname port[s] [ports] ... \n\
 listen for inbound:	nc -l -p port [-options] [hostname] [port]\n\
