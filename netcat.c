@@ -95,6 +95,10 @@
 #endif
 #define MAXHOSTNAMELEN 256
 
+#ifndef HAVE_SOCKLEN_T
+#define socklen_t int
+#endif
+
 struct host_poop {
   char name[MAXHOSTNAMELEN];	/* dns name */
   char addrs[8][24];		/* ascii-format IP addresses */
@@ -775,7 +779,7 @@ int dolisten (rad, rp, lad, lp)
   register int nnetfd;
   register int rr;
   HINF * whozis = NULL;
-  int x;
+  socklen_t x;
   char * cp;
   USHORT z;
   errno = 0;
