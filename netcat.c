@@ -119,7 +119,6 @@ struct host_poop {
 
 struct port_poop {
   char name [64];		/* name in /etc/services */
-  char anum [8];		/* ascii-format number */
   USHORT num;			/* real host-order number */
 };
 #define PINF struct port_poop
@@ -517,7 +516,6 @@ USHORT getportpoop (pstring, pnum)
 gp_finish:
 /* Fall here whether or not we have a valid servent at this point, with
    x containing our [host-order and therefore useful, dammit] port number */
-  sprintf (portpoop->anum, "%d", x);	/* always load any numeric specs! */
   portpoop->num = (x & 0xffff);		/* ushort, remember... */
   return (portpoop->num);
 } /* getportpoop */
