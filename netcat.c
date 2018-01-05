@@ -411,7 +411,7 @@ HINF * gethostpoop (name, numeric)
 
   } else {  /* not INADDR_NONE: numeric addresses... */
     memcpy (poop->iaddrs, &iaddr, sizeof (IA));
-    strncpy (poop->addrs[0], inet_ntoa (iaddr), sizeof (poop->addrs));
+    strncpy (poop->addrs[0], inet_ntoa (iaddr), sizeof (poop->addrs[0]));
     if (numeric)			/* if numeric-only, we're done */
       return (poop);
     if (! o_verbose)			/* likewise if we don't want */
