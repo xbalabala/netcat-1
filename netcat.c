@@ -180,6 +180,7 @@ USHORT o_verbose = 0;
 USHORT o_holler_stderr = 1;
 unsigned int o_wait = 0;
 USHORT o_zero = 0;
+int o_quit = -1; /* 0 == quit-now; >0 == quit after o_quit seconds */
 /* o_tn in optional section */
 
 /* Debug macro: squirt whatever message and sleep a bit so we can see it go
@@ -243,6 +244,14 @@ void catch ()
   if (o_verbose > 1)		/* normally we don't care */
     bail (wrote_txt, wrote_net, wrote_out);
   bail ("");
+}
+
+/* quit :
+   handler for a "-q" timeout (exit 0 instead of 1) */
+void quit ()
+{
+  close (netfd);
+  exit (0);
 }
 
 /* timeout and other signal handling cruft */
@@ -1268,6 +1277,18 @@ Debug (("got %d from the net, errno %d", rr, errno))
 	if (rr <= 0) {			/* at end, or fukt, or ... */
 	  FD_CLR (0, ding1);		/* disable and close stdin */
 	  close (0);
+	  /* if the user asked to exit on EOF, do it */
+	  if (o_quit == 0) {
+	    shutdown (netfd, 1);
+	    close (fd);
+	    exit (0);
+	  }
+	  /* if user asked to die after a while, arrange for it */
+	  if (o_quit > 0) {
+	    shutdown (netfd, 1);
+	    signal (SIGALRM, quit);
+	    alarm (o_quit);
+	  }
 	} else {
 	  rzleft = rr;
 	  zp = bigbuf_in;
@@ -1373,6 +1394,7 @@ options:");
 	-n			numeric-only IP addresses, no DNS\n\
 	-o file			hex dump of traffic\n\
 	-p port			local port number\n\
+	-q secs			quit after EOF on stdin and delay of secs\n\
 	-r			randomize local and remote ports\n\
 	-s addr			local source address");
 #ifdef TELNET
@@ -1489,7 +1511,7 @@ main (argc, argv)
 
 /* If your shitbox doesn't have getopt, step into the nineties already. */
 /* optarg, optind = next-argv-component [i.e. flag arg]; optopt = last-char */
-  while ((x = getopt (argc, argv, "abc:e:g:G:hi:lno:p:rs:tuvw:z")) != EOF) {
+  while ((x = getopt (argc, argv, "abc:e:g:G:hi:lno:p:q:rs:tuvw:z")) != EOF) {
 /* Debug (("in go: x now %c, optarg %x optind %d", x, optarg, optind)) */
     switch (x) {
       case 'a':
@@ -1550,6 +1572,8 @@ main (argc, argv)
 	break;
       case 'r':				/* randomize various things */
 	o_random++; break;
+      case 'q':				/* quit after stdin does EOF */
+	o_quit = atoi (optarg); break;
       case 's':				/* local source address */
 /* do a full lookup [since everything else goes through the same mill],
    unless -n was previously specified.  In fact, careful placement of -n can
