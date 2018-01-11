@@ -241,7 +241,7 @@ void catch ()
   errno = 0;
   if (o_verbose > 1)		/* normally we don't care */
     bail (wrote_txt, wrote_net, wrote_out);
-  bail (" punt!");
+  bail ("");
 }
 
 /* timeout and other signal handling cruft */
