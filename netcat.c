@@ -1104,7 +1104,7 @@ dol_noop:
   errno = 0;
   x = 0;				/* use as a flag... */
   if (rad)	/* xxx: fix to go down the *list* if we have one? */
-    if (memcmp (rad, whozis->iaddrs, sizeof (SA)))
+    if (memcmp (rad, whozis->iaddrs, sizeof (*rad)))
       x = 1;
   if (rp)
     if (z != rp)
@@ -1402,7 +1402,7 @@ int dolisten6 (rad, rp, lad, lp)
   errno = 0;
   x = 0;			/* use as a flag... */
   if (rad)		/* xxx: fix to go down the *list* if we have one? */
-    if (memcmp (rad, whozis->iaddrs, sizeof (SAI6)))
+    if (memcmp (rad, whozis->iaddrs, sizeof (*rad)))
       x = 1;
   if (rp)
     if (z != rp)
