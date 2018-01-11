@@ -86,6 +86,12 @@
 #define SAI struct sockaddr_in	/* ... whoever came up with this model */
 #define IA struct in_addr	/* ... should be taken out and shot, */
 				/* ... not that TLI is any better.  sigh.. */
+#ifdef INET6
+#define SS struct sockaddr
+#define SAI6 struct sockaddr_in6
+#define IA6 struct in6_addr
+#endif
+
 #define SLEAZE_PORT 31337	/* for UDP-scan RTT trick, change if ya want */
 #define USHORT unsigned short	/* use these for options an' stuff */
 #define BIGSIZ 8192		/* big buffers */
@@ -116,6 +122,15 @@ struct host_poop {
   struct in_addr iaddrs[8];	/* real addresses: in_addr.s_addr: ulong */
 };
 #define HINF struct host_poop
+
+#ifdef INET6
+struct host6_poop {
+  char name[MAXHOSTNAMELEN];	/* dns name */
+  char addrs[8][64];		/* ascii-format IP addresses */
+  struct in6_addr iaddrs[8];	/* real addresses: in_addr.s_addr: ulong */
+};
+#define HINF6 struct host6_poop
+#endif
 
 struct port_poop {
   char name [64];		/* name in /etc/services */
@@ -156,6 +171,10 @@ static char hexnibs[20] = "0123456789abcdef  ";
 /* will malloc up the following globals: */
 struct timeval * timer1 = NULL;
 struct timeval * timer2 = NULL;
+#ifdef INET6
+SAI6 * lclend6 = NULL;		/* sockaddr_in6 structs */
+SAI6 * remend6 = NULL;
+#endif
 SAI * lclend = NULL;		/* sockaddr_in structs */
 SAI * remend = NULL;
 HINF ** gates = NULL;		/* LSRR hop hostpoop */
@@ -349,6 +368,40 @@ int comparehosts (poop, hp)
 /* ... do we need to do anything over and above that?? */
 } /* comparehosts */
 
+#ifdef INET6
+char *inet_ntoa6 (struct in6_addr *s)
+{
+  static char buf[1024];
+
+  if (IN6_IS_ADDR_V4MAPPED(s))
+    inet_ntop (AF_INET, s+12, buf, sizeof (buf));
+  else
+    inet_ntop (AF_INET6, s, buf, sizeof (buf));
+
+  return buf;
+}
+
+int comparehosts6 (poop, hp)
+  HINF6 * poop;
+  struct hostent * hp;
+{
+  errno = 0;
+  h_errno = 0;
+/* The DNS spec is officially case-insensitive, but for those times when you
+   *really* wanna see any and all discrepancies, by all means define this. */
+#ifdef ANAL
+  if (strcmp (poop->name, hp->h_name) != 0) {		/* case-sensitive */
+#else
+  if (strcasecmp (poop->name, hp->h_name) != 0) {	/* normal */
+#endif
+    holler ("DNS fwd/rev mismatch: %s != %s", poop->name, hp->h_name);
+    return (1);
+  }
+  return (0);
+/* ... do we need to do anything over and above that?? */
+} /* comparehosts */
+#endif
+
 /* gethostpoop :
    resolve a host 8 ways from sunday; return a new host_poop struct with its
    info.  The argument can be a name or [ascii] IP address; it will try its
@@ -446,6 +499,82 @@ HINF * gethostpoop (name, numeric)
   h_errno = 0;
   return (poop);
 } /* gethostpoop */
+
+#ifdef INET6
+HINF6 * gethost6poop (name, numeric)
+  char *name;
+  USHORT numeric;
+{
+  struct hostent *hostent;
+  struct in6_addr iaddr;
+  register HINF6 *poop = NULL;
+  register int x;
+
+/* If we want to see all the DNS stuff, do the following hair --
+   if inet_addr, do reverse and forward with any warnings; otherwise try
+   to do forward and reverse with any warnings.  In other words, as long
+   as we're here, do a complete DNS check on these clowns.  Yes, it slows
+   things down a bit for a first run, but once it's cached, who cares? */
+
+  errno = 0;
+  h_errno = 0;
+  if (name)
+    poop = (HINF6 *) Hmalloc (sizeof (HINF6));
+  if (!poop)
+    bail ("gethost6poop fuxored");
+  strcpy (poop->name, unknown);	/* preload it */
+
+  if (! inet_pton (AF_INET6, name, &iaddr)) {	/* here's the great split: names... */
+    if (numeric)
+      bail ("Can't parse %s as an IP address", name);
+    hostent = gethostbyname2 (name, AF_INET6);
+    if (!hostent)
+/* failure to look up a name is fatal, since we can't do anything with it */
+      bail ("%s: forward host lookup failed: ", name);
+    strncpy (poop->name, hostent->h_name, MAXHOSTNAMELEN - 2);
+    for (x = 0; hostent->h_addr_list[x] && (x < 8); x++) {
+      memcpy (&poop->iaddrs[x], hostent->h_addr_list[x], sizeof (IA6));
+      strncpy (poop->addrs[x], inet_ntoa6 (&poop->iaddrs[x]), sizeof (poop->addrs[0]));
+    }		/* for x -> addrs, part A */
+    if (!o_verbose)	/* if we didn't want to see the */
+      return (poop);	/* inverse stuff, we're done. */
+/* do inverse lookups in separate loop based on our collected forward addrs,
+   since gethostby* tends to crap into the same buffer over and over */
+    for (x = 0; !IN6_IS_ADDR_UNSPECIFIED(&poop->iaddrs[x]) && (x < 8); x++) {
+      hostent = gethostbyaddr ((char *) &poop->iaddrs[x], sizeof (IA6), AF_INET6);
+      if (!hostent || !hostent->h_name)
+	holler ("Warning: inverse host lookup failed for %s: ", poop->addrs[x]);
+      else
+	(void) comparehosts6 (poop, hostent);
+    }		/* for x -> addrs, part B */
+
+  } else {		/* not INADDR_NONE: numeric addresses... */
+    inet_ntop (AF_INET6, &iaddr, poop->addrs[0], sizeof (poop->addrs[0]));
+    memcpy (poop->iaddrs, &iaddr, sizeof (IA6));
+    if (numeric)	/* if numeric-only, we're done */
+      return (poop);
+    if (!o_verbose)	/* likewise if we don't want */
+      return (poop);	/* the full DNS hair */
+    hostent = gethostbyaddr ((char *) &iaddr, sizeof (IA6), AF_INET6);
+/* numeric or not, failure to look up a PTR is *not* considered fatal */
+    if (!hostent)
+      holler ("%s: inverse host lookup failed: ", name);
+    else {
+      strncpy (poop->name, hostent->h_name, MAXHOSTNAMELEN - 2);
+      hostent = gethostbyname2 (poop->name, AF_INET6);
+      if (!hostent || !hostent->h_addr_list[0])
+	holler ("Warning: forward host lookup failed for %s: ", poop->name);
+      else
+	(void) comparehosts6 (poop, hostent);
+    }		/* if hostent */
+  }			/* INADDR_NONE Great Split */
+
+/* whatever-all went down previously, we should now have a host_poop struct
+   with at least one IP address in it. */
+  h_errno = 0;
+  return (poop);
+}				/* gethost6poop */
+#endif
 
 /* getportpoop :
    Same general idea as gethostpoop -- look up a port in /etc/services, fill
@@ -982,9 +1111,9 @@ dol_noop:
       x = 1;
   if (x)					/* guilty! */
     bail ("invalid connection to [%s] from %s [%s] %d",
-	cp, whozis->name, whozis->addrs[0], z);
+      cp, whozis->name, whozis->addrs[0], z);
   holler ("connect to [%s] from %s [%s] %d",		/* oh, you're okay.. */
-	cp, whozis->name, whozis->addrs[0], z);
+    cp, whozis->name, whozis->addrs[0], z);
   return (nnetfd);				/* open! */
 
 dol_tmo:
@@ -1037,6 +1166,305 @@ udptest (fd, where)
   close (fd);				/* use it or lose it! */
   return (-1);
 } /* udptest */
+
+#ifdef INET6
+/* doconnect6 :
+   do all the socket stuff, and return an fd for one of
+	an open outbound TCP connection
+	a UDP stub-socket thingie
+   with appropriate socket options set up if we wanted source-routing, or
+	an unconnected TCP or UDP socket to listen on.
+   Examines various global o_blah flags to figure out what-all to do. */
+int doconnect6 (rad, rp, lad, lp)
+  IA6 *rad;
+  USHORT rp;
+  IA6 *lad;
+  USHORT lp;
+{
+  register int nnetfd;
+  register int rr;
+  int x, y;
+  errno = 0;
+
+/* grab a socket; set opts */
+newskt:
+  if (o_udpmode)
+    nnetfd = socket (AF_INET6, SOCK_DGRAM, IPPROTO_UDP);
+  else
+    nnetfd = socket (AF_INET6, SOCK_STREAM, IPPROTO_TCP);
+  if (nnetfd < 0)
+    bail ("Can't get socket");
+  if (nnetfd == 0)	/* if stdin was closed this might *be* 0, */
+    goto newskt;	/* so grab another.  See text for why... */
+  x = 1;
+  rr = setsockopt (nnetfd, SOL_SOCKET, SO_REUSEADDR, &x, sizeof (x));
+  if (rr == -1)
+    holler ("nnetfd reuseaddr failed");	/* ??? */
+#ifdef SO_REUSEPORT		/* doesnt exist everywhere... */
+  rr = setsockopt (nnetfd, SOL_SOCKET, SO_REUSEPORT, &x, sizeof (x));
+  if (rr == -1)
+    holler ("nnetfd reuseport failed");	/* ??? */
+#endif
+#if 0
+/* If you want to screw with RCVBUF/SNDBUF, do it here.  Liudvikas Bukys at
+   Rochester sent this example, which would involve YET MORE options and is
+   just archived here in case you want to mess with it.  o_xxxbuf are global
+   integers set in main() getopt loop, and check for rr == 0 afterward. */
+  rr = setsockopt (nnetfd, SOL_SOCKET, SO_RCVBUF, &o_rcvbuf, sizeof o_rcvbuf);
+  rr = setsockopt (nnetfd, SOL_SOCKET, SO_SNDBUF, &o_sndbuf, sizeof o_sndbuf);
+#endif
+
+/* fill in all the right sockaddr crud */
+  lclend6->sin6_family = AF_INET6;
+  remend6->sin6_family = AF_INET6;
+
+/* if lad/lp, do appropriate binding */
+  if (lad)
+    memcpy (&lclend6->sin6_addr, lad, sizeof (IA6));
+  else
+    memcpy (&lclend6->sin6_addr, &in6addr_any, sizeof (IA6));
+  if (lp)
+    lclend6->sin6_port = htons (lp);
+  rr = 0;
+  if (lad || lp) {
+    x = (int) lp;
+/* try a few times for the local bind, a la ftp-data-port... */
+    for (y = 4; y > 0; y--) {
+      rr = bind (nnetfd, (SA *) lclend6, sizeof (SAI6));
+      if (rr == 0)
+	break;
+      if (errno != EADDRINUSE)
+	break;
+      else {
+	holler ("retrying local %s:%d", inet_ntoa6 (&lclend6->sin6_addr), lp);
+	sleep (2);
+	errno = 0;	/* clear from sleep */
+      }	/* if EADDRINUSE */
+    }		/* for y counter */
+  }			/* if lad or lp */
+  if (rr)
+    bail ("Can't grab %s:%d with bind", inet_ntoa6 (&lclend6->sin6_addr), lp);
+
+  if (o_listen)
+    return (nnetfd);	/* thanks, that's all for today */
+
+  memcpy (&remend6->sin6_addr, rad, sizeof (IA6));
+  remend6->sin6_port = htons (rp);
+
+  if (gatesidx) {		/* if we wanted any srcrt hops ... */
+    holler ("Warning: source routing unavailable on this machine, ignoring");
+  }
+
+  /* if gatesidx */
+  /* wrap connect inside a timer, and hit it */
+  arm_timer (1, o_wait);
+  if (setjmp (jbuf) == 0) {
+    rr = connect (nnetfd, (SA *) remend6, sizeof (SAI6));
+  } else {		/* setjmp: connect failed... */
+    rr = -1;
+    errno = ETIMEDOUT;	/* fake it */
+  }
+  arm_timer (0, 0);
+  if (rr == 0)
+    return (nnetfd);
+  close (nnetfd);		/* clean up junked socket FD!! */
+  return (-1);
+}				/* doconnect6 */
+
+/* dolisten6 :
+   just like doconnect6, and in fact calls a hunk of doconnect6, but listens for
+   incoming and returns an open connection *from* someplace.  If we were
+   given host/port args, any connections from elsewhere are rejected.  This
+   in conjunction with local-address binding should limit things nicely... */
+int dolisten6 (rad, rp, lad, lp)
+  IA6 *rad;
+  USHORT rp;
+  IA6 *lad;
+  USHORT lp;
+{
+  register int nnetfd;
+  register int rr;
+  HINF6 *whozis = NULL;
+  socklen_t x;
+  char *cp;
+  USHORT z;
+  errno = 0;
+
+/* Pass everything off to doconnect6, who in o_listen mode just gets a socket */
+  nnetfd = doconnect6 (rad, rp, lad, lp);
+  if (nnetfd <= 0)
+    return (-1);
+  if (o_udpmode) {	/* apparently UDP can listen ON */
+    if (!lp)	/* "port 0",  but that's not useful */
+      bail ("UDP listen needs -p arg");
+  } else {
+    rr = listen (nnetfd, 1);	/* gotta listen() before we can get */
+    if (rr < 0)	/* our local random port.  sheesh. */
+      bail ("local listen fuxored");
+  }
+
+/* Various things that follow temporarily trash bigbuf_net, which might contain
+   a copy of any recvfrom()ed packet, but we'll read() another copy later. */
+
+/* I can't believe I have to do all this to get my own goddamn bound address
+   and port number.  It should just get filled in during bind() or something.
+   All this is only useful if we didn't say -p for listening, since if we
+   said -p we *know* what port we're listening on.  At any rate we won't bother
+   with it all unless we wanted to see it, although listening quietly on a
+   random unknown port is probably not very useful without "netstat". */
+  if (o_verbose) {
+    x = sizeof (SAI6);	/* how 'bout getsockNUM instead, pinheads?! */
+    rr = getsockname (nnetfd, (SA *) lclend6, &x);
+    if (rr < 0)
+      holler ("local getsockname failed");
+    strcpy (bigbuf_net, "listening on [");	/* buffer reuse... */
+    if (!IN6_IS_ADDR_UNSPECIFIED(&lclend6->sin6_addr))
+      strcat (bigbuf_net, inet_ntoa6 (&lclend6->sin6_addr));
+    else
+      strcat (bigbuf_net, "any");
+    strcat (bigbuf_net, "] %d ...");
+    z = ntohs (lclend6->sin6_port);
+    holler (bigbuf_net, z);
+  }
+
+  /* verbose -- whew!! */
+  /* UDP is a speeeeecial case -- we have to do I/O *and* get the calling
+     party's particulars all at once, listen() and accept() don't apply.
+     At least in the BSD universe, however, recvfrom/PEEK is enough to tell
+     us something came in, and we can set things up so straight read/write
+     actually does work after all.  Yow.  YMMV on strange platforms!  */
+  if (o_udpmode) {
+    x = sizeof (SAI6);	/* retval for recvfrom */
+    arm_timer (2, o_wait);	/* might as well timeout this, too */
+    if (setjmp (jbuf) == 0) {	/* do timeout for initial connect */
+      /* and here we block... */
+      rr = recvfrom (nnetfd, bigbuf_net, BIGSIZ, MSG_PEEK, (SA *) remend6, &x);
+      Debug (("dolisten/recvfrom ding, rr = %d, netbuf %s ",
+              rr, bigbuf_net))
+    } else
+      goto dol_tmo;	/* timeout */
+    arm_timer (0, 0);
+/* I'm not completely clear on how this works -- BSD seems to make UDP
+   just magically work in a connect()ed context, but we'll undoubtedly run
+   into systems this deal doesn't work on.  For now, we apparently have to
+   issue a connect() on our just-tickled socket so we can write() back.
+   Again, why the fuck doesn't it just get filled in and taken care of?!
+   This hack is anything but optimal.  Basically, if you want your listener
+   to also be able to send data back, you need this connect() line, which
+   also has the side effect that now anything from a different source or even a
+   different port on the other end won't show up and will cause ICMP errors.
+   I guess that's what they meant by "connect".
+   Let's try to remember what the "U" is *really* for, eh? */
+    rr = connect (nnetfd, (SA *) remend6, sizeof (SAI6));
+    goto whoisit;
+  }
+
+  /* o_udpmode */
+  /* fall here for TCP */
+  x = sizeof (SAI6);	/* retval for accept */
+  arm_timer (2, o_wait);		/* wrap this in a timer, too; 0 = forever */
+  if (setjmp (jbuf) == 0) {
+    rr = accept (nnetfd, (SA *) remend6, &x);
+  } else
+    goto dol_tmo;	/* timeout */
+  arm_timer (0, 0);
+  close (nnetfd);		/* dump the old socket */
+  nnetfd = rr;		/* here's our new one */
+
+ whoisit:
+  if (rr < 0)
+    goto dol_err;	/* bail out if any errors so far */
+
+/* find out what address the connection was *to* on our end, in case we're
+   doing a listen-on-any on a multihomed machine.  This allows one to
+   offer different services via different alias addresses, such as the
+   "virtual web site" hack. */
+  memset (bigbuf_net, 0, 64);
+  cp = &bigbuf_net[32];
+  x = sizeof (SAI6);
+  rr = getsockname (nnetfd, (SA *) lclend6, &x);
+  if (rr < 0)
+    holler ("post-rcv getsockname failed");
+  strcpy (cp, inet_ntoa6 (&lclend6->sin6_addr));
+
+/* now check out who it is.  We don't care about mismatched DNS names here,
+   but any ADDR and PORT we specified had better fucking well match the caller.
+   Converting from addr to inet_ntoa and back again is a bit of a kludge, but
+   gethostpoop wants a string and there's much gnarlier code out there already,
+   so I don't feel bad.
+   The *real* question is why BFD sockets wasn't designed to allow listens for
+   connections *from* specific hosts/ports, instead of requiring the caller to
+   accept the connection and then reject undesireable ones by closing.  In
+   other words, we need a TCP MSG_PEEK. */
+  z = ntohs (remend6->sin6_port);
+  strcpy (bigbuf_net, inet_ntoa6 (&remend6->sin6_addr));
+  whozis = gethost6poop (bigbuf_net, o_nflag);
+  errno = 0;
+  x = 0;			/* use as a flag... */
+  if (rad)		/* xxx: fix to go down the *list* if we have one? */
+    if (memcmp (rad, whozis->iaddrs, sizeof (SAI6)))
+      x = 1;
+  if (rp)
+    if (z != rp)
+      x = 1;
+  if (x)			/* guilty! */
+    bail ("invalid connection to [%s] from %s [%s] %d",
+      cp, whozis->name, whozis->addrs[0], z);
+  holler ("connect to [%s] from %s [%s] %d",	/* oh, you're okay.. */
+    cp, whozis->name, whozis->addrs[0], z);
+  return (nnetfd);	/* open! */
+
+ dol_tmo:
+  errno = ETIMEDOUT;	/* fake it */
+ dol_err:
+  close (nnetfd);
+  return (-1);
+}				/* dolisten */
+
+/* udptest :
+   fire a couple of packets at a UDP target port, just to see if it's really
+   there.  On BSD kernels, ICMP host/port-unreachable errors get delivered to
+   our socket as ECONNREFUSED write errors.  On SV kernels, we lose; we'll have
+   to collect and analyze raw ICMP ourselves a la satan's probe_udp_ports
+   backend.  Guess where one could swipe the appropriate code from...
+
+   Use the time delay between writes if given, otherwise use the "tcp ping"
+   trick for getting the RTT.  [I got that idea from pluvius, and warped it.]
+   Return either the original fd, or clean up and return -1. */
+int
+udptest6 (fd, where)
+  int fd;
+  IA6 *where;
+{
+  register int rr;
+
+  rr = write (fd, bigbuf_in, 1);
+  if (rr != 1)
+    holler ("udptest first write failed?! errno %d", errno);
+  if (o_wait)
+    sleep (o_wait);
+  else {
+/* use the tcp-ping trick: try connecting to a normally refused port, which
+   causes us to block for the time that SYN gets there and RST gets back.
+   Not completely reliable, but it *does* mostly work. */
+    o_udpmode = 0;	/* so doconnect6 does TCP this time */
+/* Set a temporary connect timeout, so packet filtration doesnt cause
+   us to hang forever, and hit it */
+    o_wait = 5;	/* enough that we'll notice?? */
+    rr = doconnect6 (where, SLEAZE_PORT, 0, 0);
+    if (rr > 0)
+      close (rr);	/* in case it *did* open */
+    o_wait = 0;	/* reset it */
+    o_udpmode++;	/* we *are* still doing UDP, right? */
+  }			/* if o_wait */
+  errno = 0;		/* clear from sleep */
+  rr = write (fd, bigbuf_in, 1);
+  if (rr == 1)		/* if write error, no UDP listener */
+    return (fd);
+  close (fd);		/* use it or lose it! */
+  return (-1);
+}				/* udptest */
+#endif
 
 /* oprint :
    Hexdump bytes shoveled either way to a running logfile, in the format:
@@ -1385,6 +1813,8 @@ options:");
 	-e filename		program to exec after connect [dangerous!!]");
 #endif
   holler ("\
+	-4			Use IPv4 (default)\n\
+	-6			Use IPv6\n\
 	-b			allow broadcasts\n\
 	-g gateway		source-routing hop point[s], up to 8\n\
 	-G num			source-routing pointer: 4, 8, 12, ...\n\
@@ -1428,6 +1858,13 @@ main (argc, argv)
   HINF * wherefrom = NULL;
   IA * ouraddr = NULL;
   IA * themaddr = NULL;
+#ifdef INET6
+  HINF6 * whereto6 = NULL;
+  HINF6 * wherefrom6 = NULL;
+  IA6 * ouraddr6 = NULL;
+  IA6 * themaddr6 = NULL;
+  int want6 = 0;
+#endif
   USHORT o_lport = 0;
   USHORT ourport = 0;
   USHORT loport = 0;		/* for scanning stuff */
@@ -1443,6 +1880,10 @@ main (argc, argv)
 /* round up the usual suspects, i.e. malloc up all the stuff we need */
   lclend = (SAI *) Hmalloc (sizeof (SA));
   remend = (SAI *) Hmalloc (sizeof (SA));
+#ifdef INET6
+  lclend6 = (SAI6 *) Hmalloc (sizeof (SS));
+  remend6 = (SAI6 *) Hmalloc (sizeof (SS));
+#endif
   bigbuf_in = Hmalloc (BIGSIZ);
   bigbuf_net = Hmalloc (BIGSIZ);
   ding1 = (fd_set *) Hmalloc (sizeof (fd_set));
@@ -1511,9 +1952,17 @@ main (argc, argv)
 
 /* If your shitbox doesn't have getopt, step into the nineties already. */
 /* optarg, optind = next-argv-component [i.e. flag arg]; optopt = last-char */
-  while ((x = getopt (argc, argv, "abc:e:g:G:hi:lno:p:q:rs:tuvw:z")) != EOF) {
+  while ((x = getopt (argc, argv, "46abc:e:g:G:hi:lno:p:q:rs:tuvw:z")) != EOF) {
 /* Debug (("in go: x now %c, optarg %x optind %d", x, optarg, optind)) */
     switch (x) {
+#ifdef INET6
+      case '4':
+	want6 = 0;
+	break;
+      case '6':
+	want6 = 1;
+	break;
+#endif
       case 'a':
 	bail ("all-A-records NIY");
 	o_alla++; break;
@@ -1578,8 +2027,16 @@ main (argc, argv)
 /* do a full lookup [since everything else goes through the same mill],
    unless -n was previously specified.  In fact, careful placement of -n can
    be useful, so we'll still pass o_nflag here instead of forcing numeric.  */
-	wherefrom = gethostpoop (optarg, o_nflag);
-	ouraddr = &wherefrom->iaddrs[0];
+#ifdef INET6
+	if (want6) {
+	  wherefrom6 = gethost6poop (optarg, o_nflag);
+	  ouraddr6 = &wherefrom6->iaddrs[0];
+	} else
+#endif
+	{
+	  wherefrom = gethostpoop (optarg, o_nflag);
+	  ouraddr = &wherefrom->iaddrs[0];
+	}
 	break;
 #ifdef TELNET
       case 't':				/* do telnet fakeout */
@@ -1633,12 +2090,24 @@ Debug (("after go: x now %c, optarg %x optind %d", x, optarg, optind))
 /* gonna only use first addr of host-list, like our IQ was normal; if you wanna
    get fancy with addresses, look up the list yourself and plug 'em in for now.
    unless we finally implement -a, that is. */
-  if (argv[optind])
-    whereto = gethostpoop (argv[optind], o_nflag);
-  if (whereto && whereto->iaddrs)
-    themaddr = &whereto->iaddrs[0];
-  if (themaddr)
-    optind++;				/* skip past valid host lookup */
+  if (argv[optind]) {
+#ifdef INET6
+    if (want6) {
+      whereto6 = gethost6poop (argv[optind], o_nflag);
+      if (whereto6 && whereto6->iaddrs)
+	themaddr6 = &whereto6->iaddrs[0];
+      if (themaddr6)
+	optind++;				/* skip past valid host lookup */
+    } else
+#endif
+    {
+      whereto = gethostpoop (argv[optind], o_nflag);
+      if (whereto && whereto->iaddrs)
+	themaddr = &whereto->iaddrs[0];
+      if (themaddr)
+	optind++;				/* skip past valid host lookup */
+    }
+  }
   errno = 0;
   h_errno = 0;
 
@@ -1653,7 +2122,12 @@ Debug (("after go: x now %c, optarg %x optind %d", x, optarg, optind))
       if (curport == 0)			/* if given, demand correctness */
 	bail ("invalid port %s", argv[optind]);
     } /* if port-arg */
-    netfd = dolisten (themaddr, curport, ouraddr, o_lport);
+#ifdef INET6
+    if (want6)
+      netfd = dolisten6 (themaddr6, curport, ouraddr6, o_lport);
+    else
+#endif
+      netfd = dolisten (themaddr, curport, ouraddr, o_lport);
 /* dolisten does its own connect reporting, so we don't holler anything here */
     if (netfd > 0) {
 #ifdef GAPING_SECURITY_HOLE
@@ -1672,8 +2146,16 @@ Debug (("after go: x now %c, optarg %x optind %d", x, optarg, optind))
   } /* o_listen */
 
 /* fall thru to outbound connects.  Now we're more picky about args... */
-  if (! themaddr)
-    bail ("no destination");
+#ifdef INET6
+  if (want6) {
+    if (! themaddr6)
+      bail ("no destination");
+  } else
+#endif
+  {
+    if (! themaddr)
+      bail ("no destination");
+  }
   if (argv[optind] == NULL)
     bail ("no port[s] to connect to");
   if (argv[optind + 1])		/* look ahead: any more port args given? */
@@ -1716,15 +2198,32 @@ Debug (("Single %d, curport %d", Single, curport))
 	  ourport += 8192;		/* if it *still* conflicts, use -s. */
       }
       curport = getportpoop (NULL, curport);
-      netfd = doconnect (themaddr, curport, ouraddr, ourport);
+#ifdef INET6
+      if (want6)
+	netfd = doconnect6 (themaddr6, curport, ouraddr6, ourport);
+      else
+#endif
+	netfd = doconnect (themaddr, curport, ouraddr, ourport);
 Debug (("netfd %d from port %d to port %d", netfd, ourport, curport))
       if (netfd > 0)
-	if (o_zero && o_udpmode)	/* if UDP scanning... */
-	  netfd = udptest (netfd, themaddr);
+	if (o_zero && o_udpmode) {	/* if UDP scanning... */
+#ifdef INET6
+	  if (want6)
+	    netfd = udptest6 (netfd, themaddr6);
+	  else
+#endif
+	    netfd = udptest (netfd, themaddr);
+	}
       if (netfd > 0) {			/* Yow, are we OPEN YET?! */
 	x = 0;				/* pre-exit status */
-	holler ("%s [%s] %d (%s) open",
-	  whereto->name, whereto->addrs[0], curport, portpoop->name);
+#ifdef INET6
+	if (want6)
+	  holler ("%s [%s] %d (%s) open",
+	    whereto6->name, whereto6->addrs[0], curport, portpoop->name);
+	else
+#endif
+	  holler ("%s [%s] %d (%s) open",
+	    whereto->name, whereto->addrs[0], curport, portpoop->name);
 #ifdef GAPING_SECURITY_HOLE
 	if (pr00gie)			/* exec is valid for outbound, too */
 	  doexec (netfd);
@@ -1735,9 +2234,16 @@ Debug (("netfd %d from port %d to port %d", netfd, ourport, curport))
 	x = 1;				/* preload exit status for later */
 /* if we're scanning at a "one -v" verbosity level, don't print refusals.
    Give it another -v if you want to see everything. */
-	if ((Single || (o_verbose > 1)) || (errno != ECONNREFUSED))
-	  holler ("%s [%s] %d (%s)",
-	    whereto->name, whereto->addrs[0], curport, portpoop->name);
+	if ((Single || (o_verbose > 1)) || (errno != ECONNREFUSED)) {
+#ifdef INET6
+	  if (want6)
+	    holler ("%s [%s] %d (%s)",
+	      whereto6->name, whereto6->addrs[0], curport, portpoop->name);
+	  else
+#endif
+	    holler ("%s [%s] %d (%s)",
+	      whereto->name, whereto->addrs[0], curport, portpoop->name);
+	}
       } /* if netfd */
       close (netfd);			/* just in case we didn't already */
       if (o_interval)

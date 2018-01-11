@@ -286,6 +286,7 @@ There's a BIG swamp lurking where network code of any sort lives.
 #undef HAVE_TTYENT_H
 #define HAVE_SIGSETJMP
 #define HAVE_SOCKLEN_T
+#define INET6
 #endif /* linux */
 
 /* irix 5.x; may not be correct for earlier ones */
