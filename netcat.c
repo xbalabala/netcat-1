@@ -730,7 +730,7 @@ int doexec_use_sh = 0;			/* `-c' or `-e' option? */
    that would be security-critical, which is why it's ifdefed out by default.
    Use at your own hairy risk; if you leave shells lying around behind open
    listening ports you deserve to lose!! */
-doexec_new (fd)
+void doexec_new (fd)
   int fd;
 {
   dup2 (fd, 0);				/* the precise order of fiddlage */
@@ -750,7 +750,7 @@ Debug (("gonna exec \"%s\" using /bin/sh...", pr00gie))
    that would be security-critical, which is why it's ifdefed out by default.
    Use at your own hairy risk; if you leave shells lying around behind open
    listening ports you deserve to lose!! */
-doexec (fd)
+void doexec (fd)
   int fd;
 {
   register char * p;
@@ -1528,7 +1528,7 @@ void oprint (which, buf, n)
     } /* if bc < x */
 
     bc -= x;			/* fix wrt current line size */
-    sprintf (&stage[2], "%8.8x ", obc);		/* xxx: still slow? */
+    sprintf ((char*)&stage[2], "%8.8x ", obc);		/* xxx: still slow? */
     obc += x;			/* fix current offset */
     op = &stage[11];		/* where hex starts */
     a = &stage[61];		/* where ascii starts */
@@ -1590,7 +1590,7 @@ void atelnet (buf, size)
       obuf[1] = y;
       p++; x--;
       obuf[2] = *p;			/* copy actual option byte */
-      (void) write (netfd, obuf, 3);
+      if (write (netfd, obuf, 3)) {}
 /* if one wanted to bump wrote_net or do a hexdump line, here's the place */
       y = 0;
     } /* if y */
@@ -2100,7 +2100,7 @@ Debug (("fd_set size %d", sizeof (*ding1)))	/* how big *is* it? */
   }
 #endif /* G_S_H */
   if (o_wfile) {
-    ofd = open (stage, O_WRONLY | O_CREAT | O_TRUNC, 0664);
+    ofd = open ((char*)stage, O_WRONLY | O_CREAT | O_TRUNC, 0664);
     if (ofd <= 0)			/* must be > extant 0/1/2 */
       bail ("can't open %s", stage);
     stage = (unsigned char *) Hmalloc (100);
@@ -2153,11 +2153,12 @@ Debug (("after go: x now %c, optarg %x optind %d", x, optarg, optind))
 /* dolisten does its own connect reporting, so we don't holler anything here */
     if (netfd > 0) {
 #ifdef GAPING_SECURITY_HOLE
-      if (pr00gie)			/* -c or -e given? */
+      if (pr00gie) {			/* -c or -e given? */
 	if (doexec_use_sh)		/* -c */
 	  doexec_new (netfd);
-        else				/* -e */
+	else				/* -e */
 	  doexec (netfd);
+      }
 #endif /* GAPING_SECURITY_HOLE */
       x = readwrite (netfd);		/* it even works with UDP! */
       if (o_verbose > 1)		/* normally we don't care */
