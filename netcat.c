@@ -1840,6 +1840,28 @@ options:");
 } /* helpme */
 #endif /* HAVE_HELP */
 
+/* unescape :
+   translate \-'s into -'s, returns start */
+char * unescape (start)
+  char * start;
+{
+  char * end;
+  char * next;
+  char * p;
+
+  end = start + strlen (start);
+  next = start;
+
+  while ((next = strstr (next+1, "\\-"))) {
+    p = next;
+    /* copy string back one char, overwriting backslash */
+    memmove (p, p+1, end-p);
+    end--;
+  }
+
+  return start;
+} /* unescape */
+
 /* main :
    now we pull it all together... */
 int
@@ -2168,13 +2190,21 @@ Debug (("after go: x now %c, optarg %x optind %d", x, optarg, optind))
    argument, so we can control the pattern somewhat. */
   while (argv[optind]) {
     hiport = loport = 0;
+    /* I know it's ugly to have this test twice, but I'd rather not have
+       it do all of the dash code if there aren't any dashes at all */
     cp = strchr (argv[optind], '-');	/* nn-mm range? */
     if (cp) {
-      *cp = '\0';
-      cp++;
-      hiport = getportpoop (cp, 0);
-      if (hiport == 0)
-	bail ("invalid port %s", cp);
+      while (cp && *(cp-1) == '\\') /* if dash escaped by backslash */
+        cp = strchr (cp+1, '-');
+
+      if (cp) { /* it's a range */
+        *cp = '\0';
+        unescape (++cp); /* turn \-'s into -'s */
+        hiport = getportpoop (cp, 0);
+        if (hiport == 0)
+          bail ("invalid port %s", cp);
+      }
+      unescape (argv[optind]); /* turn \-'s into -'s */
     } /* if found a dash */
     loport = getportpoop (argv[optind], 0);
     if (loport == 0)
