@@ -20,6 +20,8 @@ o = o		# object extension
 
 ALL = nc
 
+-include config.mk
+
 ### BOGON-CATCHERS
 
 bogus:
